@@ -86,15 +86,15 @@ begin
 	μ_w = zeros(2)
 	Σₚ = LinearAlgebra.I
 	w_prior = MvNormal(μ_w, Σₚ)
-end
+end;
 
 # ╔═╡ a45861dd-569a-4650-85f3-5e1265b44bc8
 begin
 	# plot contour of prior distribution
-	f1 = Figure()
-	Axis(f1[1, 1])
-	xs = LinRange(-2, 2, 100)
-	ys = LinRange(-2, 2, 100)
+	f1 = Figure(size=(400, 400))
+	Axis(f1[1, 1], title="Prior p(w)")
+	xs = LinRange(-2, 2, 1000)
+	ys = LinRange(-2, 2, 1000)
 	zs = [pdf(w_prior, [x,y]) for x in xs, y in ys]
 	contour!(xs, ys, zs)
 	f1
@@ -107,15 +107,17 @@ md"""
 
 # ╔═╡ 890a7d4e-12f2-435f-83a5-4ce1834c21f2
 # TRUE parameters w
-w_true = [-0.2, 1.21]
+w_true = [-0.2, 1.21];
 
 # ╔═╡ 5475ce71-6225-4b72-af52-68f217596ca9
+# GENERATE training data from the true data distribution
 begin
-	σₙ = 0.1
+	σₙ = 1.5
 	ϵ = Normal(0, σₙ)
-	n = 3
+	n = 4
 	X = vcat(ones(1,n), rand(1,n).*10 .- 5) # p(x)
 	y = transpose(X) * w_true .+ rand.(ϵ)
+	(X,y)
 end
 
 # ╔═╡ 056ce3e3-3735-4a03-a05e-549a427bf59a
@@ -128,15 +130,15 @@ begin
 	# p(y|X,w) ~ N(X^T w, σ²*I)
 	# a function of the weights
 	y_likelihood(w) = MvNormal(transpose(X)*w, σₙ * LinearAlgebra.I)
-end
+end;
 
 # ╔═╡ ea8b7639-506b-4230-a50a-5de348a3848b
 begin
 	# plot contour of likelihood distribution, as a function of w
-	f2 = Figure()
-	Axis(f2[1,1])
-	w1s = LinRange(-2, 2, 100)
-	w2s = LinRange(-2, 2, 100)
+	f2 = Figure(size=(400, 400))
+	Axis(f2[1,1], title="Likelihood p(y|X,w)")
+	w1s = LinRange(-2, 2, 1000)
+	w2s = LinRange(-2, 2, 1000)
 	y_probs = [pdf(y_likelihood([w1,w2]), y) for w1 in w1s, w2 in w2s]
 	scatter!([w_true[1],], [w_true[2],])
 	contour!(w1s, w2s, y_probs)
@@ -150,11 +152,24 @@ md"""
 
 # ╔═╡ e191eac1-aba4-40db-9882-13a45ed8cc76
 begin
-	A = inv(σₙ)^(2) * X * transpose(X) + inv(Σₚ)
-end
+	A = Hermitian(inv(σₙ)^(2) * X * transpose(X) + inv(Σₚ))
+	inv_A = inv(A)
+	μ_post = inv(σₙ)^(2)*inv_A*X*y
+	w_post = MvNormal(μ_post, inv_A)
+end;
 
 # ╔═╡ 5ac42363-fb37-4c4d-951b-aa4a996ea225
-inv(Σₚ)
+let xs, ys
+	# plot contour of posterior distribution
+	f1 = Figure(size=(400, 400))
+	Axis(f1[1, 1], title="Posterior p(w|X,y)", limits=(-2, 2, -2, 2))
+	xs = LinRange(-2, 2, 1000)
+	ys = LinRange(-2, 2, 1000)
+	zs = [pdf(w_post, [x,y]) for x in xs, y in ys]
+	scatter!([w_true[1],], [w_true[2],])
+	contour!(xs, ys, zs)
+	f1
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1764,15 +1779,15 @@ version = "3.5.0+0"
 # ╟─130d5735-0984-4fbd-80a7-c6dad7dcd091
 # ╟─828e754d-e81b-4655-981a-76408ee7b270
 # ╠═6fe8ab47-afd6-47b7-a36b-316a8d85bcce
-# ╠═a45861dd-569a-4650-85f3-5e1265b44bc8
+# ╟─a45861dd-569a-4650-85f3-5e1265b44bc8
 # ╟─e3c2cb4c-b2bc-4472-b31e-6b9af8d46c1c
 # ╠═890a7d4e-12f2-435f-83a5-4ce1834c21f2
 # ╠═5475ce71-6225-4b72-af52-68f217596ca9
 # ╟─056ce3e3-3735-4a03-a05e-549a427bf59a
 # ╠═16d236e0-57b3-4feb-aa1d-2a28baf95eb9
-# ╠═ea8b7639-506b-4230-a50a-5de348a3848b
+# ╟─ea8b7639-506b-4230-a50a-5de348a3848b
 # ╟─053bb9f2-809d-46de-afef-e0c8b14514b7
 # ╠═e191eac1-aba4-40db-9882-13a45ed8cc76
-# ╠═5ac42363-fb37-4c4d-951b-aa4a996ea225
+# ╟─5ac42363-fb37-4c4d-951b-aa4a996ea225
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
