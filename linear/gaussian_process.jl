@@ -4,171 +4,113 @@
 using Markdown
 using InteractiveUtils
 
-# ╔═╡ f27b2c2e-1af4-479a-883f-a6592ea54519
-using LinearAlgebra
-
-# ╔═╡ 12be6bb4-a68c-11ee-333b-99fba75b0947
+# ╔═╡ 4a2d792e-c573-4be4-b7dc-f7c0f48f6efa
 using Distributions
 
-# ╔═╡ 62d02123-3f24-44bf-b13c-e3e17c6cb73f
+# ╔═╡ 9b1473bf-cd9e-487f-a80b-01b8576b2daf
+using LinearAlgebra
+
+# ╔═╡ b52bc8d6-8537-459a-9d3e-aae52dcc3da8
 using CairoMakie
 
-# ╔═╡ 8edfdad0-e5ef-4932-8c23-bad9e7df040e
+# ╔═╡ 19183394-d654-11ee-2003-ef285717ab3c
 md"""
-# Standard Linear Model
+# Gaussian Processes
 
-Bayesian analysis of the standard linear model:
+In the Bayesian linear model, we our goal was to find a posterior distribution over 
+the weights: $p(w|x)$. Gaussian processes instead define a distribution of *functions*:
 
-$$$f(x) = x^Tw, \,\,\, y = f(x) + \epsilon$$$
+**Definition** A Gaussian process (GP) is a collection of random variables, any finite
+number of which have a joint Gaussian distribution.
 
-For feature vector $x$, model parameters $w \in \mathbb{R}^d$. 
+A GP is fully described by its mean and covariance functions. The mean function $m(\bf x)$ and covariance function $k(\bf x, \bf x\prime)$ of a real process $f(\bf x)$ are defined as
 
-We assume that $\epsilon \sim \mathcal{N}(0, \sigma_n^2)$ is iid noise.
+$\begin{align*}
+m(\bf x) & = \mathbb{E}[f(\bf x)] \\
+k(\bf x, \bf x\prime) & = \mathbb{E}[(f(\bf x) - m(\bf x))(f(\bf x\prime) - m(\bf x\prime))] \\
+\end{align*}$
 
-This model and noise assumption leads to the following **likelihood** (where $X$ is the $d × n$ matrix, each column is a sample's feature vector):
+We write the GP as
 
-$$$p(y|X, w) = \frac{1}{(2 \pi \sigma^2_n)^{n/2}} \exp \bigg( - \frac{1}{2\sigma^2_n} |y - X^Tw|^2  \bigg) = \mathcal{N}(X^Tw, \sigma^2_n \cdot I)$$$
+$f(\bf x) \sim \mathcal{GP}(m(\bf x), k(\bf x, \bf x\prime)).$
 """
 
-# ╔═╡ 64dded2c-8a47-453c-b5da-2f5a92bbbfa5
+# ╔═╡ 61f02b7c-1523-46aa-ae8f-da835d480844
 md"""
-In the Bayesian formalism, we specify our *prior beliefs* about the weights before seeing any observations:
+## Bayesian linear model as GP
+Our Bayesian linear model can be cast as a GP in the following way. $f(\bf x) = \phi(\bf x)^T \bf w$ with prior $\bf w \sim \mathcal{N}(\bf 0, \Sigma_p)$. Our mean and covariance:
 
-$p(w) \sim \mathcal{N}(0, \Sigma_p)$
-
----
-
-We can then use the prior and likelihood to derive the *posterior* distribution of the weights, defined by
-
-$p(w|X,y) = \frac{p(y|X,w)p(w)}{p(y|X)}$
-
-Ignoring the marginal likelihood (denominator) normalizing factor, we can write this as
-
-$p(w|X,y) \propto p(y|X,w)p(w)$
-
-It can be shown that this posterior distribution has a Gaussian distribution:
-
-$p(w|X,Y) \sim \mathcal{N}(\bar{w} = \frac{1}{\sigma^2_n}A^{-1}Xy, A^{-1}),$
-
-where $A = \sigma^{-2}_n X X^T + \Sigma_p^{-1}$.
+$\begin{align*}
+\mathbb{E}[f(\bf x)] & = \phi(\bf x)^T \mathbb{E}[\bf w] = \bf 0 \\
+\mathbb{E}[f(\bf x)f(\bf x\prime)] & = \phi(\bf x)^T \mathbb{E}[\bf w \bf w^T] \phi(\bf x\prime) = \phi(\bf x)^T \Sigma_p \phi(\bf x\prime) \\
+\end{align*}$
 """
 
-# ╔═╡ 80bd922d-f1ae-44cf-aada-277efd369540
+# ╔═╡ e189f657-07a9-4c59-88ae-3da4a40657aa
 md"""
----
+### Covariance Function (kernel)
+We will use the squared exponential covariance function to measure the covariance
+of pairs of random variables:
 
-To make predictions on a new (test) point $x_*$, we need to find the *posterior predictive distribution*.
+$cov(f(\bf{x_p}), f(\bf{x_q})) = k(\bf x_p, \bf x_q) = a \exp \bigg(- \frac{1}{2 \ell} |\bf x_p - \bf x_q|^2 \bigg).$
 
-The (noiseless) posterior predictive distribution for $f_* = f(x_*)$ is given by
-
-$\begin{align*} p(f_*|x_*, X, y) & = \int p(f_*|x_*, w)p(w|X,y)\,dw \\
-& = \mathcal{N}(\sigma^{-2}_n x_*^T A^{-1} X y, x_*^T A^{-1} x_*) \end{align*}$
+Note that this kernel expresses the covariance of outputs ($f(\bf x_p)$) as a function of the inputs ($\bf x_p$). In this case, points that are "closer" (in 
+a Euclidean distance sense) will have higher covariance.
 """
 
-# ╔═╡ d93b3fd1-8c16-4c16-bb47-59a2b128b3f1
+# ╔═╡ d9081f71-a21a-4abe-a429-9e0f89515196
 md"""
-## Examples
+### A Distribution over Functions
+What we have constructed here is a (prior) distribution over *functions*. Here's how that works:
+
+1. Select a set points at which we wish to evaluate our GP $X_*$
+2. Calculate the covariances $K(X_*, X_*)$
+3. Construct a multivariate Gaussian with this covariance matrix
+4. Sample from this mv Gaussian: $f_* \sim \mathcal{N}(\textbf{0}, K(X_*, X_*))$
+
+Let's do that now:
 """
 
-# ╔═╡ 130d5735-0984-4fbd-80a7-c6dad7dcd091
-md"""
-Let our Bayesian linear model be $f(x) = w_1 + w_2 x$.
-"""
+# ╔═╡ f6b986ad-873d-4f27-a1ab-3692109e4c7f
+exp_k(x, y; a=1, ℓ=1) = (a^2) * exp(-(norm(x - y)^2)/(2*ℓ))
 
-# ╔═╡ 828e754d-e81b-4655-981a-76408ee7b270
-md"""
-### Prior
-"""
-
-# ╔═╡ 6fe8ab47-afd6-47b7-a36b-316a8d85bcce
-# p(w) ~ N(0, I)
-begin
-	μ_w = zeros(2)
-	Σₚ = LinearAlgebra.I
-	w_prior = MvNormal(μ_w, Σₚ)
-end;
-
-# ╔═╡ a45861dd-569a-4650-85f3-5e1265b44bc8
-begin
-	# plot contour of prior distribution
-	f1 = Figure(size=(400, 400))
-	Axis(f1[1, 1], title="Prior p(w)")
-	xs = LinRange(-2, 2, 1000)
-	ys = LinRange(-2, 2, 1000)
-	zs = [pdf(w_prior, [x,y]) for x in xs, y in ys]
-	contour!(xs, ys, zs)
-	f1
+# ╔═╡ a986ae2c-dfee-4a2d-975e-cfebf56e3aa5
+function cov_k(x, x′)
+	return Symmetric([exp_k(x[i], x′[j]) for i in 1:length(x), j in 1:length(x′)])
 end
 
-# ╔═╡ e3c2cb4c-b2bc-4472-b31e-6b9af8d46c1c
-md"""
-### Training data, Likelihood, and Posterior
-"""
+# ╔═╡ b8c48ee3-426f-4fcf-8e3e-4578f0321791
+test_xs = -5:0.1:5
 
-# ╔═╡ 890a7d4e-12f2-435f-83a5-4ce1834c21f2
-# TRUE parameters w
-w_true = [-0.2, 1.21];
+# ╔═╡ 83635579-9de0-4a18-b11c-c1537b8cdfec
+# prior covariance matrix, add small noise for numerical considerations of Cholesky
+Σ = cov_k(test_xs, test_xs) + 0.0001*LinearAlgebra.I
 
-# ╔═╡ 5475ce71-6225-4b72-af52-68f217596ca9
-# GENERATE training data from the true data distribution
+# ╔═╡ 3cb5b1fd-73f0-4fb7-8f61-632ca27a3067
+# construct our multivariate Gaussian, and generate points
+prior_dist = MvNormal(zeros(length(test_xs)), Σ)
+
+# ╔═╡ 52114dd1-ad03-4d97-9dec-725d8b84b5cb
+ys = rand(prior_dist, 4);
+
+# ╔═╡ 04135c39-8193-4ccd-8544-294d7a3b71c8
 begin
-	σₙ = 1.5
-	ϵ = Normal(0, σₙ)
-	n = 4
-	X = vcat(ones(1,n), rand(1,n).*10 .- 5) # p(x)
-	y = transpose(X) * w_true .+ rand.(ϵ)
-	(X,y)
+	μ = mean(prior_dist)
+	std_hi = μ .+ 2*diag(Σ)
+	std_lo = μ .- 2*diag(Σ)
 end
 
-# ╔═╡ 056ce3e3-3735-4a03-a05e-549a427bf59a
-md"""
-#### Likelihood $p(y|X,w)$
-"""
-
-# ╔═╡ 16d236e0-57b3-4feb-aa1d-2a28baf95eb9
+# ╔═╡ ca1666b3-16b6-4054-a9fd-f71f9941ed01
 begin
-	# p(y|X,w) ~ N(X^T w, σ²*I)
-	# a function of the weights
-	y_likelihood(w) = MvNormal(transpose(X)*w, σₙ * LinearAlgebra.I)
-end;
-
-# ╔═╡ ea8b7639-506b-4230-a50a-5de348a3848b
-begin
-	# plot contour of likelihood distribution, as a function of w
-	f2 = Figure(size=(400, 400))
-	Axis(f2[1,1], title="Likelihood p(y|X,w)")
-	w1s = LinRange(-2, 2, 1000)
-	w2s = LinRange(-2, 2, 1000)
-	y_probs = [pdf(y_likelihood([w1,w2]), y) for w1 in w1s, w2 in w2s]
-	scatter!([w_true[1],], [w_true[2],])
-	contour!(w1s, w2s, y_probs)
-	f2
-end
-
-# ╔═╡ 053bb9f2-809d-46de-afef-e0c8b14514b7
-md"""
-#### Posterior $p(w|X,y)$
-"""
-
-# ╔═╡ e191eac1-aba4-40db-9882-13a45ed8cc76
-begin
-	A = Hermitian(inv(σₙ)^(2) * X * transpose(X) + inv(Σₚ))
-	inv_A = inv(A)
-	μ_post = inv(σₙ)^(2)*inv_A*X*y
-	w_post = MvNormal(μ_post, inv_A)
-end;
-
-# ╔═╡ 5ac42363-fb37-4c4d-951b-aa4a996ea225
-let xs, ys
-	# plot contour of posterior distribution
-	f1 = Figure(size=(400, 400))
-	Axis(f1[1, 1], title="Posterior p(w|X,y)", limits=(-2, 2, -2, 2))
-	xs = LinRange(-2, 2, 1000)
-	ys = LinRange(-2, 2, 1000)
-	zs = [pdf(w_post, [x,y]) for x in xs, y in ys]
-	scatter!([w_true[1],], [w_true[2],])
-	contour!(xs, ys, zs)
-	f1
+	# plot samples from prior dist of GP
+	f = Figure()
+	ax = Axis(f[1,1], limits=((-5, 5), (-4, 4)), title="GP Prior")
+	band!(ax, test_xs, std_lo, std_hi, color=:lightgrey, alpha=0.1)
+	lines!(ax, test_xs, μ)
+	for y in eachcol(ys)
+		scatter!(ax, test_xs, y, markersize=5)
+	end
+	f
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -179,8 +121,8 @@ Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 
 [compat]
-CairoMakie = "~0.11.4"
-Distributions = "~0.25.104"
+CairoMakie = "~0.11.9"
+Distributions = "~0.25.107"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -189,7 +131,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.1"
 manifest_format = "2.0"
-project_hash = "daf95617effb7d6915c1d47d1cd23b8534198074"
+project_hash = "a766a207dc415427997b491cd3ece6e90ca467f2"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -208,9 +150,9 @@ uuid = "398f06c4-4d28-53ec-89ca-5b2656b7603d"
 version = "0.3.0"
 
 [[deps.AbstractTrees]]
-git-tree-sha1 = "faa260e4cb5aba097a73fab382dd4b5819d8ec8c"
+git-tree-sha1 = "2d9c9a55f9c93e8887ad391fbae72f8ef55e1177"
 uuid = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
-version = "0.4.4"
+version = "0.4.5"
 
 [[deps.Adapt]]
 deps = ["LinearAlgebra", "Requires"]
@@ -280,9 +222,9 @@ uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 
 [[deps.BenchmarkTools]]
 deps = ["JSON", "Logging", "Printf", "Profile", "Statistics", "UUIDs"]
-git-tree-sha1 = "f1f03a9fa24271160ed7e73051fba3c1a759b53f"
+git-tree-sha1 = "f1dff6729bc61f4d49e140da1af55dcd1ac97b2f"
 uuid = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
-version = "1.4.0"
+version = "1.5.0"
 
 [[deps.Bzip2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -298,12 +240,6 @@ version = "0.5.0"
 [[deps.CRC32c]]
 uuid = "8bf52ea8-c179-5cab-976a-9e18b702a9bc"
 
-[[deps.CRlibm]]
-deps = ["CRlibm_jll"]
-git-tree-sha1 = "32abd86e3c2025db5172aa182b982debed519834"
-uuid = "96374032-68de-5a5b-8d9e-752f78720389"
-version = "1.0.1"
-
 [[deps.CRlibm_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "e329286945d0cfc04456972ea732551869af1cfc"
@@ -318,9 +254,9 @@ version = "1.0.5"
 
 [[deps.CairoMakie]]
 deps = ["CRC32c", "Cairo", "Colors", "FFTW", "FileIO", "FreeType", "GeometryBasics", "LinearAlgebra", "Makie", "PrecompileTools"]
-git-tree-sha1 = "a80d49ed3333f5f78df8ffe76d07e88cc35e9172"
+git-tree-sha1 = "6dc1bbdd6a133adf4aa751d12dbc2c6ae59f873d"
 uuid = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
-version = "0.11.8"
+version = "0.11.9"
 
 [[deps.Cairo_jll]]
 deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
@@ -336,9 +272,9 @@ version = "0.5.1"
 
 [[deps.ChainRulesCore]]
 deps = ["Compat", "LinearAlgebra"]
-git-tree-sha1 = "ad25e7d21ce10e01de973cdc68ad0f850a953c52"
+git-tree-sha1 = "aef70bb349b20aa81a82a19704c3ef339d4ee494"
 uuid = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
-version = "1.21.1"
+version = "1.22.1"
 weakdeps = ["SparseArrays"]
 
     [deps.ChainRulesCore.extensions]
@@ -403,9 +339,9 @@ version = "0.3.0"
 
 [[deps.Compat]]
 deps = ["TOML", "UUIDs"]
-git-tree-sha1 = "75bd5b6fc5089df449b5d35fa501c846c9b6549b"
+git-tree-sha1 = "c955881e3c981181362ae4088b35995446298b80"
 uuid = "34da2185-b29b-5c13-b0c7-acf172513d20"
-version = "4.12.0"
+version = "4.14.0"
 weakdeps = ["Dates", "LinearAlgebra"]
 
     [deps.Compat.extensions]
@@ -439,9 +375,9 @@ version = "1.16.0"
 
 [[deps.DataStructures]]
 deps = ["Compat", "InteractiveUtils", "OrderedCollections"]
-git-tree-sha1 = "ac67408d9ddf207de5cfa9a97e114352430f01ed"
+git-tree-sha1 = "1fb174f0d48fe7d142e1109a10636bc1d14f5ac2"
 uuid = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
-version = "0.18.16"
+version = "0.18.17"
 
 [[deps.DataValueInterfaces]]
 git-tree-sha1 = "bfc1187b79289637fa0ef6d4436ebdfe6905cbd6"
@@ -537,9 +473,9 @@ version = "0.1.2"
 
 [[deps.FFMPEG_jll]]
 deps = ["Artifacts", "Bzip2_jll", "FreeType2_jll", "FriBidi_jll", "JLLWrappers", "LAME_jll", "Libdl", "Ogg_jll", "OpenSSL_jll", "Opus_jll", "PCRE2_jll", "Zlib_jll", "libaom_jll", "libass_jll", "libfdk_aac_jll", "libvorbis_jll", "x264_jll", "x265_jll"]
-git-tree-sha1 = "466d45dc38e15794ec7d5d63ec03d776a9aff36e"
+git-tree-sha1 = "ab3f7e1819dba9434a3a5126510c8fda3a4e7000"
 uuid = "b22a6f82-2f65-5046-a5b2-351ab43fb4e5"
-version = "4.4.4+1"
+version = "6.1.1+0"
 
 [[deps.FFTW]]
 deps = ["AbstractFFTs", "FFTW_jll", "LinearAlgebra", "MKL_jll", "Preferences", "Reexport"]
@@ -614,11 +550,10 @@ git-tree-sha1 = "21efd19106a55620a188615da6d3d06cd7f6ee03"
 uuid = "a3f928ae-7b40-5064-980b-68af3947d34b"
 version = "2.13.93+0"
 
-[[deps.Formatting]]
-deps = ["Printf"]
-git-tree-sha1 = "8339d61043228fdd3eb658d86c926cb282ae72a8"
-uuid = "59287772-0a20-5a39-b81b-1366585eb4c0"
-version = "0.4.2"
+[[deps.Format]]
+git-tree-sha1 = "f3cf88025f6d03c194d73f5d13fee9004a108329"
+uuid = "1fa38f19-a742-5d3f-a2b9-30dd87b9d5f8"
+version = "1.3.6"
 
 [[deps.ForwardDiff]]
 deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "LinearAlgebra", "LogExpFunctions", "NaNMath", "Preferences", "Printf", "Random", "SpecialFunctions"]
@@ -657,12 +592,6 @@ version = "1.0.10+0"
 [[deps.Future]]
 deps = ["Random"]
 uuid = "9fa8497b-333b-5362-9e8d-4d0656e87820"
-
-[[deps.GPUArraysCore]]
-deps = ["Adapt"]
-git-tree-sha1 = "ec632f177c0d990e64d955ccc1b8c04c485a0950"
-uuid = "46192b85-c4d5-4398-a991-12ede77f4527"
-version = "0.1.6"
 
 [[deps.GeoInterface]]
 deps = ["Extents"]
@@ -797,14 +726,15 @@ version = "0.15.1"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [[deps.IntervalArithmetic]]
-deps = ["CRlibm", "RoundingEmulator"]
-git-tree-sha1 = "c274ec586ea58eb7b42afd0c5d67e50ff50229b5"
+deps = ["CRlibm_jll", "RoundingEmulator"]
+git-tree-sha1 = "2d6d22fe481eff6e337808cc0880c567d7324f9a"
 uuid = "d1acc4aa-44c8-5952-acd4-ba5d80a2a253"
-version = "0.22.5"
-weakdeps = ["DiffRules", "RecipesBase"]
+version = "0.22.8"
+weakdeps = ["DiffRules", "ForwardDiff", "RecipesBase"]
 
     [deps.IntervalArithmetic.extensions]
     IntervalArithmeticDiffRulesExt = "DiffRules"
+    IntervalArithmeticForwardDiffExt = "ForwardDiff"
     IntervalArithmeticRecipesBaseExt = "RecipesBase"
 
 [[deps.IntervalSets]]
@@ -859,9 +789,9 @@ version = "0.1.5"
 
 [[deps.JpegTurbo_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "60b1194df0a3298f460063de985eae7b01bc011a"
+git-tree-sha1 = "3336abae9a713d2210bb57ab484b1e065edd7d23"
 uuid = "aacddb02-875f-59d6-b918-886e6ef4fbf8"
-version = "3.0.1+0"
+version = "3.0.2+0"
 
 [[deps.KernelDensity]]
 deps = ["Distributions", "DocStringExtensions", "FFTW", "Interpolations", "StatsBase"]
@@ -959,10 +889,10 @@ uuid = "4b2f31a3-9ecc-558c-b454-b3730dcb73e9"
 version = "2.35.0+0"
 
 [[deps.Libuuid_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "7f3efec06033682db852f8b3bc3c1d2b0a0ab066"
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "e5edc369a598dfde567269dc6add5812cfa10cd5"
 uuid = "38a345b3-de98-5d2b-a5d3-14cd9215e700"
-version = "2.36.0+0"
+version = "2.39.3+0"
 
 [[deps.LightXML]]
 deps = ["Libdl", "XML2_jll"]
@@ -988,9 +918,9 @@ version = "0.2.7"
 
 [[deps.LogExpFunctions]]
 deps = ["DocStringExtensions", "IrrationalConstants", "LinearAlgebra"]
-git-tree-sha1 = "7d6dd4e9212aebaeed356de34ccf262a3cd415aa"
+git-tree-sha1 = "18144f3e9cbe9b15b070288eef858f71b291ce37"
 uuid = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
-version = "0.3.26"
+version = "0.3.27"
 
     [deps.LogExpFunctions.extensions]
     LogExpFunctionsChainRulesCoreExt = "ChainRulesCore"
@@ -1018,10 +948,10 @@ uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 version = "0.5.13"
 
 [[deps.Makie]]
-deps = ["Animations", "Base64", "CRC32c", "ColorBrewer", "ColorSchemes", "ColorTypes", "Colors", "Contour", "DelaunayTriangulation", "Distributions", "DocStringExtensions", "Downloads", "FFMPEG_jll", "FileIO", "FilePaths", "FixedPointNumbers", "Formatting", "FreeType", "FreeTypeAbstraction", "GeometryBasics", "GridLayoutBase", "ImageIO", "InteractiveUtils", "IntervalArithmetic", "IntervalSets", "Isoband", "KernelDensity", "LaTeXStrings", "LinearAlgebra", "MacroTools", "MakieCore", "Markdown", "MathTeXEngine", "Observables", "OffsetArrays", "Packing", "PlotUtils", "PolygonOps", "PrecompileTools", "Printf", "REPL", "Random", "RelocatableFolders", "Scratch", "ShaderAbstractions", "Showoff", "SignedDistanceFields", "SparseArrays", "StableHashTraits", "Statistics", "StatsBase", "StatsFuns", "StructArrays", "TriplotBase", "UnicodeFun"]
-git-tree-sha1 = "40c5dfbb99c91835171536cd571fe6f1ba18ff97"
+deps = ["Animations", "Base64", "CRC32c", "ColorBrewer", "ColorSchemes", "ColorTypes", "Colors", "Contour", "DelaunayTriangulation", "Distributions", "DocStringExtensions", "Downloads", "FFMPEG_jll", "FileIO", "FilePaths", "FixedPointNumbers", "Format", "FreeType", "FreeTypeAbstraction", "GeometryBasics", "GridLayoutBase", "ImageIO", "InteractiveUtils", "IntervalSets", "Isoband", "KernelDensity", "LaTeXStrings", "LinearAlgebra", "MacroTools", "MakieCore", "Markdown", "MathTeXEngine", "Observables", "OffsetArrays", "Packing", "PlotUtils", "PolygonOps", "PrecompileTools", "Printf", "REPL", "Random", "RelocatableFolders", "Scratch", "ShaderAbstractions", "Showoff", "SignedDistanceFields", "SparseArrays", "StableHashTraits", "Statistics", "StatsBase", "StatsFuns", "StructArrays", "TriplotBase", "UnicodeFun"]
+git-tree-sha1 = "27af6be179c711fb916a597b6644fbb5b80becc0"
 uuid = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
-version = "0.20.7"
+version = "0.20.8"
 
 [[deps.MakieCore]]
 deps = ["Observables", "REPL"]
@@ -1040,9 +970,9 @@ uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
 
 [[deps.MathOptInterface]]
 deps = ["BenchmarkTools", "CodecBzip2", "CodecZlib", "DataStructures", "ForwardDiff", "JSON", "LinearAlgebra", "MutableArithmetics", "NaNMath", "OrderedCollections", "PrecompileTools", "Printf", "SparseArrays", "SpecialFunctions", "Test", "Unicode"]
-git-tree-sha1 = "569a003f93d7c64068d3afaab908d21f67a22cd5"
+git-tree-sha1 = "679c1aec6934d322783bd15db4d18f898653be4f"
 uuid = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
-version = "1.25.3"
+version = "1.27.0"
 
 [[deps.MathTeXEngine]]
 deps = ["AbstractTrees", "Automa", "DataStructures", "FreeTypeAbstraction", "GeometryBasics", "LaTeXStrings", "REPL", "RelocatableFolders", "UnicodeFun"]
@@ -1303,9 +1233,9 @@ version = "1.4.1"
 
 [[deps.Primes]]
 deps = ["IntegerMathUtils"]
-git-tree-sha1 = "1d05623b5952aed1307bf8b43bec8b8d1ef94b6e"
+git-tree-sha1 = "cb420f77dc474d23ee47ca8d14c90810cafe69e7"
 uuid = "27ebfcd6-29c5-5fa9-bf4b-fb8fc14df3ae"
-version = "0.5.5"
+version = "0.5.6"
 
 [[deps.Printf]]
 deps = ["Unicode"]
@@ -1451,9 +1381,9 @@ version = "0.8.6"
 
 [[deps.SimplePartitions]]
 deps = ["AbstractLattices", "DataStructures", "Permutations"]
-git-tree-sha1 = "e9330391d04241eafdc358713b48396619c83bcb"
+git-tree-sha1 = "e182b9e5afb194142d4668536345a365ea19363a"
 uuid = "ec83eff0-a5b5-5643-ae32-5cbf6eedec9d"
-version = "0.3.1"
+version = "0.3.2"
 
 [[deps.SimplePolynomials]]
 deps = ["Mods", "Multisets", "Polynomials", "Primes"]
@@ -1517,9 +1447,9 @@ version = "0.1.1"
 
 [[deps.StaticArrays]]
 deps = ["LinearAlgebra", "PrecompileTools", "Random", "StaticArraysCore"]
-git-tree-sha1 = "7b0e9c14c624e435076d19aea1e5cbdec2b9ca37"
+git-tree-sha1 = "bf074c045d3d5ffd956fa0a461da38a44685d6b2"
 uuid = "90137ffa-7385-5640-81b9-e52037218182"
-version = "1.9.2"
+version = "1.9.3"
 weakdeps = ["ChainRulesCore", "Statistics"]
 
     [deps.StaticArrays.extensions]
@@ -1563,10 +1493,22 @@ version = "1.3.1"
     InverseFunctions = "3587e190-3f89-42d0-90ee-14403ec27112"
 
 [[deps.StructArrays]]
-deps = ["Adapt", "ConstructionBase", "DataAPI", "GPUArraysCore", "StaticArraysCore", "Tables"]
-git-tree-sha1 = "1b0b1205a56dc288b71b1961d48e351520702e24"
+deps = ["ConstructionBase", "DataAPI", "Tables"]
+git-tree-sha1 = "f4dc295e983502292c4c3f951dbb4e985e35b3be"
 uuid = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
-version = "0.6.17"
+version = "0.6.18"
+
+    [deps.StructArrays.extensions]
+    StructArraysAdaptExt = "Adapt"
+    StructArraysGPUArraysCoreExt = "GPUArraysCore"
+    StructArraysSparseArraysExt = "SparseArrays"
+    StructArraysStaticArraysExt = "StaticArrays"
+
+    [deps.StructArrays.weakdeps]
+    Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+    GPUArraysCore = "46192b85-c4d5-4398-a991-12ede77f4527"
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [[deps.SuiteSparse]]
 deps = ["Libdl", "LinearAlgebra", "Serialization", "SparseArrays"]
@@ -1660,9 +1602,9 @@ version = "1.0.0"
 
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Zlib_jll"]
-git-tree-sha1 = "801cbe47eae69adc50f36c3caec4758d2650741b"
+git-tree-sha1 = "07e470dabc5a6a4254ffebc29a1b3fc01464e105"
 uuid = "02c8fc9c-b97f-50b9-bbe4-9be30ff0a78a"
-version = "2.12.2+0"
+version = "2.12.5+0"
 
 [[deps.XSLT_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libgcrypt_jll", "Libgpg_error_jll", "Libiconv_jll", "Pkg", "XML2_jll", "Zlib_jll"]
@@ -1754,9 +1696,9 @@ version = "2.0.2+0"
 
 [[deps.libpng_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Zlib_jll"]
-git-tree-sha1 = "873b4f805771d3e4bafe63af759a26ea8ca84d14"
+git-tree-sha1 = "1ea2ebe8ffa31f9c324e8c1d6e86b4165b84a024"
 uuid = "b53b4c65-9356-5827-b1ea-8c7a1a84506f"
-version = "1.6.42+0"
+version = "1.6.43+0"
 
 [[deps.libsixel_jll]]
 deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Pkg", "libpng_jll"]
@@ -1794,25 +1736,20 @@ version = "3.5.0+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═f27b2c2e-1af4-479a-883f-a6592ea54519
-# ╠═12be6bb4-a68c-11ee-333b-99fba75b0947
-# ╠═62d02123-3f24-44bf-b13c-e3e17c6cb73f
-# ╟─8edfdad0-e5ef-4932-8c23-bad9e7df040e
-# ╟─64dded2c-8a47-453c-b5da-2f5a92bbbfa5
-# ╟─80bd922d-f1ae-44cf-aada-277efd369540
-# ╟─d93b3fd1-8c16-4c16-bb47-59a2b128b3f1
-# ╟─130d5735-0984-4fbd-80a7-c6dad7dcd091
-# ╟─828e754d-e81b-4655-981a-76408ee7b270
-# ╠═6fe8ab47-afd6-47b7-a36b-316a8d85bcce
-# ╟─a45861dd-569a-4650-85f3-5e1265b44bc8
-# ╟─e3c2cb4c-b2bc-4472-b31e-6b9af8d46c1c
-# ╠═890a7d4e-12f2-435f-83a5-4ce1834c21f2
-# ╠═5475ce71-6225-4b72-af52-68f217596ca9
-# ╟─056ce3e3-3735-4a03-a05e-549a427bf59a
-# ╠═16d236e0-57b3-4feb-aa1d-2a28baf95eb9
-# ╟─ea8b7639-506b-4230-a50a-5de348a3848b
-# ╟─053bb9f2-809d-46de-afef-e0c8b14514b7
-# ╠═e191eac1-aba4-40db-9882-13a45ed8cc76
-# ╟─5ac42363-fb37-4c4d-951b-aa4a996ea225
+# ╟─19183394-d654-11ee-2003-ef285717ab3c
+# ╟─61f02b7c-1523-46aa-ae8f-da835d480844
+# ╟─e189f657-07a9-4c59-88ae-3da4a40657aa
+# ╟─d9081f71-a21a-4abe-a429-9e0f89515196
+# ╠═4a2d792e-c573-4be4-b7dc-f7c0f48f6efa
+# ╠═9b1473bf-cd9e-487f-a80b-01b8576b2daf
+# ╠═b52bc8d6-8537-459a-9d3e-aae52dcc3da8
+# ╠═f6b986ad-873d-4f27-a1ab-3692109e4c7f
+# ╠═a986ae2c-dfee-4a2d-975e-cfebf56e3aa5
+# ╠═b8c48ee3-426f-4fcf-8e3e-4578f0321791
+# ╠═83635579-9de0-4a18-b11c-c1537b8cdfec
+# ╠═3cb5b1fd-73f0-4fb7-8f61-632ca27a3067
+# ╠═52114dd1-ad03-4d97-9dec-725d8b84b5cb
+# ╠═04135c39-8193-4ccd-8544-294d7a3b71c8
+# ╠═ca1666b3-16b6-4054-a9fd-f71f9941ed01
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
