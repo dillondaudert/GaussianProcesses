@@ -150,8 +150,8 @@ Let's visualize this:
 # ╔═╡ c4d0e378-26bb-4f5b-92ad-d0fa69e7dcdd
 begin
 	train_xs = rand(-4:0.1:4, 5)
-	train_fs = 2 .* rand(5) .- 1
-end
+	train_fs = rand(5) .- 1
+end;
 
 # ╔═╡ b95f252d-9fa5-45d3-9d11-adf6929b55dc
 begin
