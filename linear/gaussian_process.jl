@@ -76,7 +76,7 @@ exp_k(x, y; a=1, ℓ=1) = (a^2) * exp(-(norm(x - y)^2)/(2*ℓ))
 
 # ╔═╡ a986ae2c-dfee-4a2d-975e-cfebf56e3aa5
 function cov_k(x, x′)
-	return Symmetric([exp_k(x[i], x′[j]) for i in 1:length(x), j in 1:length(x′)])
+	return [exp_k(x[i], x′[j]) for i in 1:length(x), j in 1:length(x′)]
 end
 
 # ╔═╡ b8c48ee3-426f-4fcf-8e3e-4578f0321791
@@ -96,18 +96,86 @@ ys = rand(prior_dist, 4);
 # ╔═╡ 04135c39-8193-4ccd-8544-294d7a3b71c8
 begin
 	μ = mean(prior_dist)
-	std_hi = μ .+ 2*diag(Σ)
-	std_lo = μ .- 2*diag(Σ)
+	std_hi = μ .+ 2 .* sqrt.(diag(Σ))
+	std_lo = μ .- 2 .* sqrt.(diag(Σ))
 end
 
 # ╔═╡ ca1666b3-16b6-4054-a9fd-f71f9941ed01
-begin
+let f, ax
 	# plot samples from prior dist of GP
 	f = Figure()
 	ax = Axis(f[1,1], limits=((-5, 5), (-4, 4)), title="GP Prior")
 	band!(ax, test_xs, std_lo, std_hi, color=:lightgrey, alpha=0.1)
 	lines!(ax, test_xs, μ)
 	for y in eachcol(ys)
+		scatter!(ax, test_xs, y, markersize=5)
+	end
+	f
+end
+
+# ╔═╡ 9ed5b9f2-90df-433d-a99e-b1ecc7b7e976
+md"""
+### Noise-free Predictions
+We would like our model to reflect some observed data, reducing the uncertainty around those observed points. That is, we want our distribution over functions to 
+update based on our data.
+
+If our observations have no noise, that is we have $\{(x_i, f_i)|i = 1, \dots, n\}$,
+then our joint **prior** distribution of training data and test data is
+
+$\begin{align*}
+\begin{bmatrix}
+{\bf f} \\
+{\bf f_*}
+\end{bmatrix} & \sim \mathcal{N} \bigg({\bf 0},
+\begin{bmatrix}
+K(X,X) & K(X, X_*) \\
+K(X_*, X) & K(X_*, X_*)\\
+\end{bmatrix}
+\bigg)
+\end{align*}$
+
+We need to restrict this joint prior distribution to contain only those functions
+which agree with the observed data.
+"""
+
+# ╔═╡ 995bfe54-7c4b-4c20-9c12-a616a81240ef
+md"""
+That is, we need to condition $f_*$ on $X_*$ *and* our data $X$, $f$. This is relatively straightforward for multivariate Gaussians:
+
+${\bf f_*}|X_*,X,{\bf f} \sim \mathcal{N}\big(K(X_*,X) K(X,X)^{-1}{\bf f},\, K(X_*,X_*) - K(X_*,X)K(X,X)^{-1}K(X,X_*) \big)$
+
+Let's visualize this:
+"""
+
+# ╔═╡ c4d0e378-26bb-4f5b-92ad-d0fa69e7dcdd
+begin
+	train_xs = rand(-4:0.1:4, 5)
+	train_fs = 2 .* rand(5) .- 1
+end
+
+# ╔═╡ b95f252d-9fa5-45d3-9d11-adf6929b55dc
+begin
+	interm = cov_k(test_xs, train_xs) * inv(cov_k(train_xs, train_xs))
+	post_μ = interm * train_fs
+	post_Σ = Symmetric(cov_k(test_xs, test_xs) - interm * cov_k(train_xs, test_xs))  + 0.0001*LinearAlgebra.I
+	post_dist = MvNormal(post_μ, post_Σ)
+end;
+
+# ╔═╡ c4236fb0-8509-4d9a-aa45-d12f948d2df4
+# sample from the posterior
+post_ys = rand(post_dist, 4);
+
+# ╔═╡ 616b9b50-ce53-46a4-b8fa-125cb67b0e21
+let f, ax
+	# plot samples from prior dist of GP
+	f = Figure()
+	ax = Axis(f[1,1], limits=((-5, 5), (-4, 4)), title="GP Posterior")
+	post_std_lo = post_μ .- 2 .* sqrt.(diag(post_Σ))
+	post_std_hi = post_μ .+ 2 .* sqrt.(diag(post_Σ))
+	band!(ax, test_xs, post_std_lo, post_std_hi, color=:lightgrey, alpha=0.1)
+	lines!(ax, test_xs, post_μ)
+	scatter!(ax, train_xs, train_fs, marker=:xcross, markersize=15)
+	for y in eachcol(post_ys)
 		scatter!(ax, test_xs, y, markersize=5)
 	end
 	f
@@ -1751,5 +1819,11 @@ version = "3.5.0+0"
 # ╠═52114dd1-ad03-4d97-9dec-725d8b84b5cb
 # ╠═04135c39-8193-4ccd-8544-294d7a3b71c8
 # ╠═ca1666b3-16b6-4054-a9fd-f71f9941ed01
+# ╟─9ed5b9f2-90df-433d-a99e-b1ecc7b7e976
+# ╟─995bfe54-7c4b-4c20-9c12-a616a81240ef
+# ╠═c4d0e378-26bb-4f5b-92ad-d0fa69e7dcdd
+# ╠═b95f252d-9fa5-45d3-9d11-adf6929b55dc
+# ╠═c4236fb0-8509-4d9a-aa45-d12f948d2df4
+# ╠═616b9b50-ce53-46a4-b8fa-125cb67b0e21
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
